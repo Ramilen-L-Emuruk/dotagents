@@ -107,11 +107,16 @@ paths:
 
 | 項目 | 内容 |
 |------|------|
+| `env` | 環境変数。`CLAUDE_CODE_ENABLE_TODO_TOOLS` はタスク機能（`TaskCreate` / `TaskGet` / `TaskList` / `TaskUpdate`）を有効にする。モデルやバージョンによっては既定で配られないため、使う場合は明示する。反映にはアプリの再起動が要る |
 | `permissions.allow` | よく使う読み取り系コマンド・Git 操作・MCP ツール（Playwright・Context7・Serena 等）を確認プロンプト無しで許可するパターン集 |
 | `permissions.ask` | `git push --force` 系は明示的に確認を求める（履歴を壊しうるため、`allow` には入れていない） |
 | `model` / `language` / `effortLevel` / `tui` 等 | 個人の好みの設定。**そのまま使う前に自分の好みに合わせて調整すること** |
 | `statusLine` | `statusline-command.sh` の登録。下記「7. statusline-command.sh を使う場合」を先に実施しないと動作しない |
 | `hooks` | `skills/continuous-learning-v2/hooks/observe.sh` の登録。**このスキルを `~/.claude/skills/` にコピーしていないとフックが毎回失敗する** |
+
+`env` は既存の設定に**キー単位でマージする**こと。オブジェクトごと置き換えると、そこにあった他の環境変数が消える。
+
+`CLAUDE_CODE_ENABLE_TODO_TOOLS` は変数名が `TODO` だが、有効になるのは `Task` 系のツールで `TodoWrite` ではない。また**公式ドキュメントに記載が無い設定**のため、将来の更新で効かなくなる可能性がある。タスク機能が急に使えなくなったら、まずここを疑うこと。
 
 `statusLine` と `hooks` のコマンドパスは `~/.claude/...` 起点で書いてある。別の場所に置く場合は書き換えること。
 
