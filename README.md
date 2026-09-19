@@ -20,7 +20,9 @@
 dotagents/
   README.md              # このファイル
   CLAUDE.md               # プロジェクトCLAUDE.mdのテンプレート（プレースホルダー入り）
-  AGENTS.md               # Codex用プロジェクト指示のテンプレート
+  AGENTS.md               # この設定集を保守するためのCodex指示
+  COMPATIBILITY.md         # Claude Code／Codexの互換性一覧
+  templates/codex/AGENTS.md # 対象プロジェクトへコピーするCodex用テンプレート
   rules/
     common/                # 言語・フレームワークに依存しない汎用ルール（常時読み込み）
     java/                  # Java/Spring Boot向けの補足ルール（commonの内容を前提に差分のみ記載）
@@ -44,13 +46,15 @@ dotagents/
 
 | 資材 | Claude Code | Codex |
 |------|-------------|-------|
-| `CLAUDE.md` | プロジェクト指示 | — |
-| `AGENTS.md` | — | プロジェクト指示 |
-| `rules/` | `.claude/rules/` へコピー | `AGENTS.md` から必要なルールを参照・統合 |
-| `agents/`, `commands/` | Claude Code向け定義 | 直接互換ではない。スキルまたは利用可能なサブエージェントへ移植 |
-| `skills/` | `.claude/skills/` へコピー | `.agents/skills/` へコピー |
+| `CLAUDE.md` | プロジェクト指示 | 移植が必要 |
+| `AGENTS.md` | — | この設定集を保守する指示 |
+| `templates/codex/AGENTS.md` | — | 対象プロジェクトへコピーするテンプレート |
+| `rules/` | `.claude/rules/` へコピー | 原則は参照用。個別に移植が必要 |
+| `agents/`, `commands/`, `settings.json` | Claude Code向け定義・設定 | 非互換 |
+| `skills/` | `.claude/skills/` へコピー | 一括コピー不可。個別の移植・検証が必要 |
+| `.agents/skills/` | — | 検証済みのCodex用スキル |
 
-同じ目的のファイルでもランタイムごとに形式や読み込み方が異なる。特に Claude Code 向けの `agents/` と `commands/` は、Codexへそのままコピーしても検出されない。
+同じ目的のファイルでもランタイムごとに形式や読み込み方が異なる。導入前に必ず [COMPATIBILITY.md](./COMPATIBILITY.md) で分類を確認すること。
 
 ### `rules/common/` と言語別ルールの関係
 
@@ -78,6 +82,8 @@ paths:
 
 `skills/` 配下の大半（`gateguard`, `springboot-patterns`, `security-review` 等）は自作ではなく**外部のスキル集から複製したもの**。再入手可能な内容だが、環境を移す際に毎回同じスキル集を探し直す手間を省くためバックアップとして含めている。以下の4個だけは事情が異なるので個別に注意する:
 
+**このディレクトリはCodex用の一括コピー元ではない。** Claude Codeのツール・フック・パスを前提にする資材を含むため、Codexへ置けるのは [COMPATIBILITY.md](./COMPATIBILITY.md) で検証済みと明記されたもの、または個別に移植・検証したものだけ。
+
 - **`release`**: 自作。**単体では機能しない**（完了ブランチを `ready/*` へ改名する規約が前提のため）。導入経路によって必要な組み合わせが変わる:
   - `CLAUDE.md` テンプレートを使う場合 — `CLAUDE.md`（「リリース」節に規約を内包）＋ このスキル
   - `rules/common/` をモジュールとして使う場合 — `worktree.md`（`ready/` 規約）＋ `development-workflow.md`（手順9〜10）＋ `git-workflow.md`（マージ・版上げの委譲先）＋ このスキル
@@ -92,11 +98,11 @@ paths:
 
 ### 0. Codex で使う場合
 
-対象プロジェクトのルートへ `AGENTS.md` をコピーする。Codex は起動時に、リポジトリルートから作業ディレクトリまでにある `AGENTS.md` を読み込み、より近いディレクトリの指示を優先する。
+対象プロジェクトのルートへ `templates/codex/AGENTS.md` を `AGENTS.md` としてコピーし、プレースホルダーを対象プロジェクトの実情で置き換える。リポジトリ直下の `AGENTS.md` はこの設定集を保守するためのものなので、コピーしない。Codex は起動時に、リポジトリルートから作業ディレクトリまでにある `AGENTS.md` を読み込み、より近いディレクトリの指示を優先する。
 
-このリポジトリの `rules/` はCodexに自動読み込みされないため、対象プロジェクトへコピーして `AGENTS.md` から必要なルールを参照するか、プロジェクト用 `AGENTS.md` に要点を統合する。長大なルールを無批判に一枚へ詰め込まず、対象作業に必要なものだけを残す。
+このリポジトリの `rules/` はCodexに自動読み込みされない。内容を使う場合は、[COMPATIBILITY.md](./COMPATIBILITY.md) の「移植が必要な資材」に従って、Claude固有のツール名・パス・フックを除去または置き換える。長大なルールを無批判に一枚へ詰め込まず、対象作業に必要なものだけを残す。
 
-Codex用のスキルは、使いたい `skills/<skill-name>/` を対象プロジェクトの `.agents/skills/<skill-name>/` へコピーする。`SKILL.md` のfrontmatterにある `name` と `description` を確認し、Claude Code固有のツール・フック・コマンドを要求するスキルは、先にCodex向けに移植すること。
+Codex用のスキルは、検証済みのものだけを対象プロジェクトの `.agents/skills/<skill-name>/` へ置く。現時点でこのリポジトリにあるCodex用スキルは、設定集の保守用 `agent-config-maintenance` のみ。`skills/` の内容をそのままコピーしてはいけない。
 
 `~/.codex/config.toml` は個人環境の設定であり、このリポジトリのファイルで上書きしない。共有すべき規約は `AGENTS.md`、共有すべき再利用手順は `.agents/skills/` に置く。
 
@@ -104,7 +110,7 @@ Codex用のスキルは、使いたい `skills/<skill-name>/` を対象プロジ
 
 `CLAUDE.md` をプロジェクトルートにコピーし、末尾の「プロジェクト固有の設定」セクションに技術スタック・補助コマンド・構成メモを書き込む。それ以外のセクション（変更時の基本フロー・検証・敵対的レビュー・ドキュメント更新等）はそのまま使える想定だが、プロジェクトの運用と食い違う箇所があれば調整する。
 
-### 2. rules をコピーする場合
+### 2. Claude Codeでrulesをコピーする場合
 
 必要なファイルだけを対象プロジェクトの `.claude/rules/common/`（または `rules/java/`, `rules/dotnet/`, `rules/mcp/`）にコピーする。ファイル同士が相対リンクで参照し合っている点に注意する:
 
@@ -116,15 +122,15 @@ Codex用のスキルは、使いたい `skills/<skill-name>/` を対象プロジ
 1. リンク先が対象プロジェクトの `.claude/rules/` 配下に実在すること
 2. 言語別ルールの frontmatter（`paths:`）が残っていること。消えていると無関係な言語のルールが常時読み込まれる（上記「言語別ルールは frontmatter で読み込みを絞る」参照）
 
-### 3. agents をコピーする場合
+### 3. Claude Codeでagentsをコピーする場合
 
 使いたいエージェントだけを対象プロジェクトの `.claude/agents/` にコピーする。`.claude/rules/common/agents.md`（エージェントオーケストレーションルール）と組み合わせて使うと、どのタイミングでどのエージェントを呼ぶかの指針が揃う。
 
-### 4. commands をコピーする場合
+### 4. Claude Codeでcommandsをコピーする場合
 
 使いたいコマンドだけを対象プロジェクトの `.claude/commands/`（プロジェクト単位で使う場合）または `~/.claude/commands/`（全プロジェクト共通で使う場合）にコピーする。コピーすると `/learn` のようにスラッシュコマンドとして呼び出せるようになる。
 
-### 5. settings.json を使う場合
+### 5. Claude Codeでsettings.jsonを使う場合
 
 `~/.claude/settings.json`（全プロジェクト共通の設定）のテンプレート。**そのまま上書きコピーせず、必要な項目だけを既存の設定にマージする**（上書きすると既存の許可設定や個人設定が消える）。
 
@@ -145,11 +151,11 @@ Codex用のスキルは、使いたい `skills/<skill-name>/` を対象プロジ
 
 `statusLine` と `hooks` のコマンドパスは `~/.claude/...` 起点で書いてある。別の場所に置く場合は書き換えること。
 
-### 6. skills をコピーする場合
+### 6. Claude Codeでskillsをコピーする場合
 
 使いたいスキルだけを対象プロジェクトの `.claude/skills/`（プロジェクト単位）または `~/.claude/skills/`（全プロジェクト共通）にコピーする。`continuous-learning-v2` を有効化する場合は、対応する `hooks` 設定（`settings.json` の該当セクション）も一緒に用意する必要がある。
 
-### 7. statusline-command.sh を使う場合
+### 7. Claude Codeでstatusline-command.shを使う場合
 
 ステータスラインにモデル名・思考の深さ（effort）・コンテキスト使用率（残量に応じて緑／黄／赤）・Git ブランチ名（未コミット変更があれば `*`）を表示するスクリプト。
 

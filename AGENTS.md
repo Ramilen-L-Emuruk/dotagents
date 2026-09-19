@@ -16,6 +16,7 @@
 
 - プロジェクト固有の恒久指示は、対象リポジトリのルートに `AGENTS.md` として置く。
 - 繰り返し利用する Codex スキルは、対象リポジトリの `.agents/skills/<skill-name>/SKILL.md` に置く。
+- `COMPATIBILITY.md` を導入時の分類表とする。`skills/` は未監査の混在ソースであり、`.agents/skills/` へ一括コピーしない。
 - `~/.codex/config.toml` は利用者ごとの設定であり、このリポジトリの共有テンプレートとしてコミットしない。必要な差分だけを文書化する。
 - `agents/` と `commands/` は Claude Code 向け定義である。Codex で同じ目的を実現する際は、利用可能なサブエージェント機能または `.agents/skills/` へ意図を移植する。形式だけをコピーしない。
 
