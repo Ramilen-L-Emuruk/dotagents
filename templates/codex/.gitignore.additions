@@ -1,0 +1,5 @@
+# Codex worktree and temporary output directories. Append only the entries you use.
+.codex/worktrees/
+.codex/logs/
+.codex/screenshots/
+.codex/release.lock

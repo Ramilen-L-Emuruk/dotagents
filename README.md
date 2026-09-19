@@ -23,6 +23,9 @@ dotagents/
   AGENTS.md               # この設定集を保守するためのCodex指示
   COMPATIBILITY.md         # Claude Code／Codexの互換性一覧
   templates/codex/AGENTS.md # 対象プロジェクトへコピーするCodex用テンプレート
+  templates/codex/.codex/agents/ # Codexカスタムエージェントのテンプレート
+  templates/codex/.agents/skills/ # Codexワークフロースキルのテンプレート
+  templates/codex/.gitignore.additions # 対象リポジトリへマージする除外パターン
   rules/
     common/                # 言語・フレームワークに依存しない汎用ルール（常時読み込み）
     java/                  # Java/Spring Boot向けの補足ルール（commonの内容を前提に差分のみ記載）
@@ -49,10 +52,13 @@ dotagents/
 | `CLAUDE.md` | プロジェクト指示 | 移植が必要 |
 | `AGENTS.md` | — | この設定集を保守する指示 |
 | `templates/codex/AGENTS.md` | — | 対象プロジェクトへコピーするテンプレート |
+| `templates/codex/.codex/agents/` | — | 対象リポジトリ用のカスタムエージェント |
+| `templates/codex/.agents/skills/` | — | 対象リポジトリ用の検証済みワークフロースキル |
+| `templates/codex/.gitignore.additions` | — | Codex作業用の一時出力を除外する追記候補 |
 | `rules/` | `.claude/rules/` へコピー | 原則は参照用。個別に移植が必要 |
 | `agents/`, `commands/`, `settings.json` | Claude Code向け定義・設定 | 非互換 |
 | `skills/` | `.claude/skills/` へコピー | 一括コピー不可。個別の移植・検証が必要 |
-| `.agents/skills/` | — | 検証済みのCodex用スキル |
+| `.agents/skills/` | — | この設定集を保守するCodex用スキル |
 
 同じ目的のファイルでもランタイムごとに形式や読み込み方が異なる。導入前に必ず [COMPATIBILITY.md](./COMPATIBILITY.md) で分類を確認すること。
 
@@ -98,11 +104,11 @@ paths:
 
 ### 0. Codex で使う場合
 
-対象プロジェクトのルートへ `templates/codex/AGENTS.md` を `AGENTS.md` としてコピーし、プレースホルダーを対象プロジェクトの実情で置き換える。リポジトリ直下の `AGENTS.md` はこの設定集を保守するためのものなので、コピーしない。Codex は起動時に、リポジトリルートから作業ディレクトリまでにある `AGENTS.md` を読み込み、より近いディレクトリの指示を優先する。
+対象プロジェクトのルートへ `templates/codex/AGENTS.md` を `AGENTS.md` としてコピーし、`templates/codex/.codex/agents/` と `templates/codex/.agents/skills/` も同じ相対パスへコピーする。`templates/codex/.gitignore.additions` から使う一時出力パスだけを既存の `.gitignore` にマージし、プレースホルダーを対象プロジェクトの実情で置き換える。リポジトリ直下の `AGENTS.md` はこの設定集を保守するためのものなので、コピーしない。Codex は起動時に、リポジトリルートから作業ディレクトリまでにある `AGENTS.md` を読み込み、より近いディレクトリの指示を優先する。
 
 このリポジトリの `rules/` はCodexに自動読み込みされない。内容を使う場合は、[COMPATIBILITY.md](./COMPATIBILITY.md) の「移植が必要な資材」に従って、Claude固有のツール名・パス・フックを除去または置き換える。長大なルールを無批判に一枚へ詰め込まず、対象作業に必要なものだけを残す。
 
-Codex用のスキルは、検証済みのものだけを対象プロジェクトの `.agents/skills/<skill-name>/` へ置く。現時点でこのリポジトリにあるCodex用スキルは、設定集の保守用 `agent-config-maintenance` のみ。`skills/` の内容をそのままコピーしてはいけない。
+Codex用のスキルは、`templates/codex/.agents/skills/` にある検証済みのものだけを対象プロジェクトの `.agents/skills/<skill-name>/` へ置く。`development-workflow`、`code-review`、`release`、`capture-learning`、`worktree-workflow` を用意している。`skills/` の内容をそのままコピーしてはいけない。
 
 `~/.codex/config.toml` は個人環境の設定であり、このリポジトリのファイルで上書きしない。共有すべき規約は `AGENTS.md`、共有すべき再利用手順は `.agents/skills/` に置く。
 
