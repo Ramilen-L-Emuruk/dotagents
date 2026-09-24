@@ -38,7 +38,7 @@
 
 | 対象 | 最悪の呼び出し方 | 判定 |
 |---|---|---|
-| `EnterWorktree` | `name:` 指定（`CLAUDE.md` が禁じている形）でブランチ名を自動変換されたワークツリーができる。基点は `worktree.baseRef`（Claude Code 本体の設定。既定は `fresh` ＝ `origin/<既定ブランチ>`）が決めるので、古い地点から始まる心配は無い。**消して切り直せる** | 通過 |
+| `EnterWorktree` | `name:` 指定（`CLAUDE.md` が禁じている形）でブランチ名を自動変換されたワークツリーができる。基点は `worktree.baseRef`（**Claude Code 本体の設定**。既定 `fresh` ＝ `origin/<既定ブランチ>`）が決めるので古い地点から始まる心配は無く、**消して切り直せる** | 通過 |
 | `ExitWorktree` | `action: "remove"` ＋ `discard_changes: true` で、未コミットの変更や未マージのコミットごと消える。**復元手段が無い**。同じ片付けは `git worktree remove`（allow 済み）で足り、そちらは変更が残っていれば git 自身が拒否する | 除外 |
 | `Bash(git reset --hard *)` | ローカル専用コミットを失う。`release` スキルが「ユーザー確認を省略しないこと」と定めている | 除外 |
 
@@ -48,41 +48,44 @@
 
 | 対象 | 判定 |
 |---|---|
-| `Bash(npm version *)` | **除外。** 個別には可逆（タグ削除・コミット取り消し）だが、レビュアーがバージョンを上げる理由は無い。リリース手続きは必ず叩くコマンドではあるものの、バージョン確認は元から `AskUserQuestion` を挟む規定なので確認が 1 つ増える損は小さい |
+| `Bash(npm version *)` | **除外。** 個別には可逆だが、レビュアーがバージョンを上げる理由は無い。バージョン確認は元から `AskUserQuestion` を挟む規定なので、確認が 1 つ増える損は小さい |
 | `Bash(npm test)` / `Bash(npm run build)` | 通過。レビュアーが検証のために走らせる筋はある。成果物の生成にとどまり、すぐ終わる |
 | `Bash(npm run dev)` / `Bash(npm run preview)` | 通過。レビュアーが呼ぶ理由は無いが、**この 2 つは検証節が「大きめの変更時は必須」と定める操作**で、外すと実装セッションの手順が確認待ちで止まる。原則 1 が優先する。`run_in_background: true` を付けずに呼ぶとハングする点は使い方の規約（`release` スキルに明記）で担保し、許可設定では扱わない |
 | `EnterWorktree` / `Task` | 通過。レビュアーが呼んでも読み取り作業の範囲を出ない |
 | `Bash(git merge *)` / `Bash(git pull)` | 通過。レビュアーが呼んでも push 前のローカル操作に閉じ、破壊的なフラグを持たない（下記「git が拒否するから安全は成り立たない」でフラグを 1 つずつ確認した） |
-| 非破壊のもの（`git status` / `log` / `rev-parse` / `merge-base` / `rev-list` / `branch --list` / `branch --merged` / `branch --show-current` / `tag --points-at` / `fetch`、`gh issue view` / `list`、`ls` / `dir` / `which` / `netstat` / `Test-Path` / `Get-Command` / `Get-ChildItem` / `Get-Job` / `Get-NetTCPConnection`、`WebSearch` / `WebFetch(domain:...)`、Playwright の読み取り系、`context7`） | 通過。どこから呼ばれても取り返しがつく（`git fetch` はリモート追跡ブランチを更新するので厳密には書き込みだが、冪等で再取得すれば整合する） |
+| 読み取り専用の調査コマンド（git / gh / シェル / PowerShell の状態照会、`WebSearch` とドメイン限定の `WebFetch`、Playwright と context7 の読み取り系。**一覧は `settings.json`**。ただし Playwright は読み取り系と、下記「残存リスク」で意図的に許容した操作系が同じ配列に並ぶので、あちらと併せて読むこと） | 通過。どこから呼ばれても取り返しがつく。**例外は `git fetch`**——リモート追跡ブランチを更新するので厳密には書き込みだが、冪等で再取得すれば整合する |
 | `mcp__serena__write_memory` / `onboarding` | 通過。書き込み先は Serena 自身のメモリストアに閉じ、リポジトリのファイルには触れない |
 | `mcp__serena__activate_project` | **要確認のまま通過。** 現在のワークツリー外を対象にできるかを Serena 側の仕様から裏取りできていない。無制限なら別リポジトリへ `write_memory` する経路になるため、判明した時点で再判定する |
-| `mcp__playwright__browser_evaluate` | **除外。** ページ上で任意 JavaScript を実行できる。`rules/mcp/playwright-mcp.md` が「任意の JS を実行できるため慎重に」と警告しているのは `browser_run_code_unsafe` だが、危険度は同等。`browser_navigate` に接続先の制限が無いため、外部ドメインのコンテキストで任意コードが動く |
-| `mcp__Claude_in_Chrome__computer` / `navigate` | **除外。** Playwright の隔離インスタンスと違い、**ログイン済みの実 Chrome** をマウス・キーボードで操作する。フォーム送信・購入・メール送信といった実世界に不可逆な副作用に到達しうる。閲覧に留まる `tabs_context_mcp` だけ残した |
+| `mcp__playwright__browser_evaluate` | **除外。** ページ上で任意 JavaScript を実行できる。`browser_navigate` に接続先の制限が無いため、**外部ドメインのコンテキストで任意コードが動く** |
+| `mcp__Claude_in_Chrome__computer` / `navigate` | **除外。** Playwright の隔離インスタンスと違い、**ログイン済みの実 Chrome** を操作する。フォーム送信・購入・メール送信といった不可逆な副作用に到達しうる。閲覧に留まる `tabs_context_mcp` だけ残した |
 | `Read(//tmp/**)` → `Read(//tmp/claude/**)` へ | この環境の `/tmp` は `C:/Users/<user>/AppData/Local/Temp` に解決される。**Windows のユーザー Temp フォルダ全体**が読めており、他アプリの一時ファイル（インストールログ・ブラウザのダウンロード等）まで対象だった。スクラッチパッドの親（`claude/`）へ絞った |
 
 `AskUserQuestion` は確認そのものなので許可の対象外。`defaultMode` を `auto` にしている場合、`Read` / `Edit` / `Write` / `Grep` / `Glob` の個別指定は不要。
 
 ### 既存エントリにも当て直す
 
-**基準は新規追加のときだけ使うものではない。** 上の 2 段を既存の allow 全体に当て直したところ、次が通らなかった。
+**基準は新規追加のときだけ使うものではない。** 2 段を既存の allow 全体へ当て直したところ、
+**旧 allow の 11 行・18 パターンが削除・縮小**になった。外した理由は 4 つに集約できるので、下表はそちらで整理している。
 
-| 削除したもの | 理由 |
+| 外した理由 | 該当したもの |
 |---|---|
-| `Bash(git checkout *)` | `git checkout -- <file>` が未コミットの変更を復元不能に破棄する。**手順書はどこでも `git checkout` を使っていない**（言及は「危険」「ワークツリー内では失敗する」という注意書きのみ）ので、消しても手順は成立する |
-| `Bash(git push)` / `git push origin *` / `git push --tags` / `git push --follow-tags` / `git push -u origin *` | push は取り消せず、CI 経由で本番へ出る**外向きの操作**。第 1 段を通らない。加えてレビュー専用エージェントが push する理由は無く第 2 段も通らない。手順が使うのは `git push --follow-tags` 1 つだけで、その直前に `AskUserQuestion` での承認が既に入っているため、**確認が 1 回増える代償は小さい** |
-| `Bash(git add *)` / `Bash(git commit *)` / `Bash(git commit -m ' *)` | git 履歴に内容を書き込む。レビュー専用エージェントは「修正はしない。変更をコミットしない」と定義されているのに、`Bash` を持つ以上この 2 つで実行できていた（第 2 段を通らない）。コミット前確認（手順 8）が既に `AskUserQuestion` の承認を課しているため、確認の重複にとどまる |
-| `Bash(git tag *)` → `git tag --points-at *` へ | `git tag -d` がタグを消し、`git tag <name>` が新しいタグを作る。手順が使う読み取り形式は `--points-at HEAD` だけなのでそこへ絞った（タグ作成はバージョン更新コマンドが行い、そこは確認を挟む） |
-| `PowerShell(git *)` | git の全サブコマンドを素通しにする。これがあると上の `Bash(git ...)` の絞り込みは無意味で、`git reset --hard` も `git push origin main` も PowerShell 経由で通っていた |
-| `Bash(powershell.exe *)` | **別のシェルを起動するパターン。** `powershell.exe -Command "git push origin main --force"` はコマンド文字列が `powershell.exe ` で始まるだけでマッチするため、git に限らず**あらゆる制限を迂回できた**。上の絞り込みを全部無効化していた |
-| `Bash(fd *)` / `Bash(rg *)` | **フラグ経由でコマンドを実行できる。** `fd -x <cmd>` はヒットごとに任意コマンドを走らせ、`rg --pre <cmd>` は各ファイルを外部コマンドの出力に差し替える。許可判定はフラグを解析しないため、これらは任意コード実行と等価。検索は `Grep` / `Glob` ツールで足りる |
-| `Bash(xargs grep:*)` | `xargs` は後続コマンドを実行する。`grep` 固定なら実行ベクタは無いと評価されたが、確証が取れないため予防的に外した |
-| `PowerShell(Stop-Process *)` | `-Force` で任意のプロセス名・PID を強制終了できる。**`CLAUDE.md` が「`Stop-Process -Name node` のような一括停止は使わない」と名指しで禁じている操作**が、無確認で通っていた。未保存の作業を失うため第 1 段も通らない |
-| `PowerShell(New-Item *)` | `-Force` で既存ファイルを上書きする。git 管理外のファイルなら復元手段が無い。ファイル作成は `Write` ツールで足りる |
-| `Bash(gh issue *)` → `gh issue view *` / `gh issue list *` へ | `gh issue create` / `close` / `comment` / `edit` / `delete` が通っていた。**他者から見える外向きの書き込み**で、第 1 段・第 2 段のどちらも通らない。読み取りの 2 形式へ絞った |
+| **復元不能な破棄ができる** | `Bash(git checkout *)`（`-- <file>` で未コミットの変更が消える）・`PowerShell(Stop-Process *)`（`-Force` で任意プロセス。**`CLAUDE.md` が名指しで禁じている操作**が無確認で通っていた）・`PowerShell(New-Item *)`（`-Force` で上書き。ファイル作成は `Write` ツールで足りる）・`Bash(git tag *)`（`-d` で未 push のタグを失う。読み取りの `--points-at *` へ縮小） |
+| **外向きで取り消せない** | `git push` 系 5 形式・`Bash(gh issue *)`（`create` / `close` / `comment` / `edit` / `delete` が通っていた。読み取り 2 形式へ縮小） |
+| **レビュー専用エージェントが実行する理由が無い**（第 2 段） | `Bash(git add *)` / `Bash(git commit *)`（「修正はしない」と定義されているのに `Bash` 経由で実行できた） |
+| **下記「脱出口」に当たる** | `PowerShell(git *)`（包括）・`Bash(powershell.exe *)`（別シェル）・`Bash(fd *)` / `Bash(rg *)` / `Bash(xargs grep:*)`（フラグ経由。**`grep` 固定なら実行ベクタは無いと評価したが、確証が取れず予防的に外した**——再調査すれば許可できる余地がある） |
+
+**外す前に、手順が止まらないことを確かめている。** 外したものはいずれも、手順側に確認がもう 1 つ入るだけで済む。
+
+| 外したもの | 手順が止まらない理由 |
+|---|---|
+| `git push` 系 | 手順が実際に叩くのは `git push --follow-tags` 1 つだけで、その直前に `AskUserQuestion` の承認が既に入っている |
+| `git add` / `git commit` | **コミット前確認（手順 8）が既に `AskUserQuestion` の承認を課している**ため、確認の重複にとどまる |
+| `git tag *` | タグ作成はバージョン更新コマンドが行い、そこは確認を挟む |
+| `git checkout` | **手順書のどこでも使っていない**（言及は「危険」（`skills/safety-guard/SKILL.md`）と「ワークツリー内では失敗する」（`skills/release/SKILL.md`）という注意書きだけ） |
 
 ### 「git が拒否するから安全」は成り立たない
 
-かつてここには「`git branch -d` は未マージのブランチを消さない」「`git worktree remove` は変更が残っていれば拒否する」ことを根拠に、これらを allow へ残すと書いてあった。**実際に動かして確認したところ、いずれも誤りだった。**
+**git の安全装置はフラグ 1 つで外れる。** 実際に動かして確認した。
 
 ```
 git branch -d testbranch            # 未マージ → 拒否
@@ -92,13 +95,17 @@ git worktree remove --force <path>   # 通る。ディレクトリごと消え�
 git worktree add -B <既存ブランチ> <path>   # force なしで既存ブランチを巻き戻す
 ```
 
-git の安全装置はフラグ 1 つで外れる。そして**許可判定はフラグを解析しない**（この節の冒頭）。
+**そして許可判定はフラグを解析しない**（上記「引数では絞れない」）。**パターンを狭めても
+防げない**——git はフラグを後置でも受け付けるため、`Bash(git branch -d ready/*)` と絞っても
+`git branch -d ready/x --force` はプレフィックスに一致して通る。
 
-**パターンを狭めても防げない。** git はフラグを後置でも受け付けるため、`Bash(git branch -d ready/*)` のように絞っても `git branch -d ready/x --force` はプレフィックスに一致して通る。
+したがって `git branch -d *` / `git branch -m *` / `git worktree add *` / `git worktree remove *`
+は allow から外した。`git pull *` も `-f, --force overwrite of local branch` を持つため外し、
+引数なしの `git pull` だけ残している。
 
-したがって次の 4 つは allow から外した——`git branch -d *` / `git branch -m *` / `git worktree add *` / `git worktree remove *`。加えて `git pull *` も、`-f, --force overwrite of local branch` を持つため外した（引数なしの `git pull` だけ残した）。
-
-`git merge *` は残す。`git merge -h` に破壊的なフラグは無く（`--abort` は復元操作）、汚れた作業ツリーで上書きが起きる場合は git が実行前に止める。**この判断は「フラグを 1 つずつ確認した」ことに基づく**——コマンド名の印象ではない。
+`git merge *` は残す。`git merge -h` に破壊的なフラグは無く（`--abort` は復元操作）、汚れた
+作業ツリーで上書きが起きる場合は git が実行前に止める。**この判断はフラグを 1 つずつ確認した
+ことに基づく**——コマンド名の印象ではない。
 
 ### 結論: allow に入れられる条件
 
@@ -123,11 +130,18 @@ git の安全装置はフラグ 1 つで外れる。そして**許可判定は�
 
 ### この設計を見直すとき
 
-**フラグを 1 つずつ潰す方式は終わらない。** この設定を詰めた作業では、危険フラグを塞ぐたびに未検証の別コマンドの危険フラグが見つかる、という状態が 6 巡続いた（`powershell.exe` → `fd -x` / `rg --pre` → `branch -d --force` / `worktree remove --force` / `worktree add -B` → `git log --output` / `git fetch <refspec> --force`）。git のサブコマンドが持つオプション数を考えれば、この方式に終わりは無い。
+**フラグを 1 つずつ潰す方式は終わらない。** この設定を詰めたときは、塞ぐたびに**別の層**で
+次の穴が見つかった——**別シェル → 検索コマンドのフラグ → git の force 系 →
+読み取りコマンドの書き込みフラグ**、と 4 つの層にまたがって続いた。git のサブコマンドが
+持つオプション数を考えれば、この方式に終わりは無い。
 
-健全にしたいなら、**`Bash(<コマンド> *)` のワイルドカード形式をやめ、手順が実際に叩く呼び出しだけを引数固定の完全一致で列挙する**方式へ転換する。allow は大幅に縮み、調査系コマンドの多くが確認待ちになる代わりに、フラグによる迂回が原理的に無くなる。**上の残存リスク表は、その転換をしていないことの帰結。**
+健全にしたいなら、**`Bash(<コマンド> *)` のワイルドカード形式をやめ、手順が実際に叩く
+呼び出しだけを引数固定の完全一致で列挙する**方式へ転換する。allow は大幅に縮み、調査系
+コマンドの多くが確認待ちになる代わりに、フラグによる迂回が原理的に無くなる。
+**上の残存リスク表は、その転換をしていないことの帰結。**
 
-`ask` の force push パターンは残す。いま push が allow に無いのでどれも確認は挟まるが、将来 push を allow へ戻す変更が入ったときに「force は別扱い」という意図が残る。
+`ask` の force push パターンは残す。いま push が allow に無いのでどれも確認は挟まるが、
+将来 push を allow へ戻す変更が入ったときに「force は別扱い」という意図が残る。
 
 ### 絞り込む前に、脱出口を塞ぐ
 
