@@ -47,3 +47,10 @@ Desktop.ini
 
 # リリース手続きの排他ロック（実行時の状態）
 .claude/release.lock
+
+# Serena のプロジェクトデータ
+# Serena 自身が作る .serena/.gitignore では memories/ が除外されないため、
+# write_memory の内容がコミット対象に現れる。このリポジトリは公開されて
+# いるので、.serena/ ごと除外する（詳細は rules/common/hooks.md）。
+# project.yml は Serena 側ではバージョン管理対象の想定だが、ここでは持たない。
+.serena/
