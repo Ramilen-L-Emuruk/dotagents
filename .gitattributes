@@ -1,0 +1,2 @@
+# 台本は bash で動かすので、どの端末で取り出しても LF にする
+scripts/*.sh text eol=lf
