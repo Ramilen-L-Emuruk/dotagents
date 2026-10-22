@@ -82,9 +82,10 @@ dotagents/
   statusline-command.sh    # ステータスライン表示スクリプト（モデル名・コンテキスト使用率・Gitブランチ）
   scripts/
     writeback-ledger.sh    # 配布先の書き戻し候補を取り込み済みか見分ける台帳の台本（「配布先から書き戻す」参照）
+    git-hooks/pre-push     # 許可していないメールアドレスでの push を止めるフック（「8. push するメールアドレスを縛る場合」参照）
   writeback-imported/      # その台帳（取り込んだ候補 1 件ごとに 1 ファイル。最初に取り込んだときにできる）
   .gitignore               # 機密・実行時データの混入を防ぐ除外パターン
-  .gitattributes           # 台本（scripts/*.sh）をどの端末でも LF で取り出す設定
+  .gitattributes           # 台本とフック（scripts/*.sh・scripts/git-hooks/*）をどの端末でも LF で取り出す設定
   skills/
     */                     # スキル定義一式（大半は外部スキル集からの複製。下記「skills/ について」参照）
   .agents/skills/
@@ -255,6 +256,37 @@ Codex用のスキルは、`templates/codex/.agents/skills/` にある検証済�
    ```
 
 `bash` と `python3`（JSON パースに使用）が PATH 上にあることが前提。
+
+### 8. push するメールアドレスを縛る場合
+
+`scripts/git-hooks/pre-push` は、許可したアドレス以外を author・committer に持つコミットの push を止める。公開リポジトリへ勤務先や個人のアドレスを載せてしまう事故を防ぐためのもの。判定は許可リスト方式で、1 つも設定されていなければ push を止める。
+
+配布元のルートで、この順に行う。
+
+1. 許可するアドレスを並べる（パターンはシェルのグロブ）。**先にこれを入れる** —— 2・3 だけ済ませると、許可リストが空の間は全リポジトリの push が止まる:
+   ```bash
+   git config --global --add hooks.allowedAuthorEmail '*+<GitHub のユーザー名>@users.noreply.github.com'
+   git config --global --add hooks.allowedAuthorEmail 'noreply@anthropic.com'
+   ```
+   1 行目は `数字+ユーザー名@users.noreply.github.com` の形に当たる。`+` の無い古い形のアドレスを使っているなら、それも足す。2 行目は **Claude が author になるコミット**のため（`Co-Authored-By` は本文なので対象外だが、author 欄がこのアドレスになることがある）。
+2. 置いて実行権を付ける:
+   ```bash
+   mkdir -p ~/.git-hooks && cp scripts/git-hooks/pre-push ~/.git-hooks/ && chmod +x ~/.git-hooks/pre-push
+   ```
+3. 全リポジトリで使うよう登録する（既に `core.hooksPath` を別の場所へ設定しているなら、**上書きせず**その置き場へ手順 2 で置く）:
+   ```bash
+   git config --global core.hooksPath "$HOME/.git-hooks"
+   ```
+
+**勤務先のリポジトリへは、そのリポジトリでだけ許す。** グローバルへ足すと全リポジトリで通り、公開側の歯止めが外れる。
+
+```bash
+git config --local --add hooks.allowedAuthorEmail '<勤務先のアドレス>'
+```
+
+端末ごとに入れる必要がある（フックは git の管理外）。配布元のフックを直したら、入れた端末それぞれで手順 2 をやり直す。
+
+**効かない場合と、見ていない範囲がある。** 他のフック（`pre-commit` 等）は読まれなくなること、リポジトリ側が `core.hooksPath` を持つ（husky 等）とこのフックが動かないこと、見るのは author と committer だけであることは [`rules/common/security.md`](rules/common/security.md)「公開する前に個人情報が無いことを確かめる」にまとめてある。
 
 ## 注意事項
 
