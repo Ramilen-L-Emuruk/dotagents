@@ -424,10 +424,21 @@ try {
 
 - **ビルド（必須）**: エラー 0 を確認する。
 - **動作確認**: 対象の変更が正常に動作することを確認する。**Playwright MCP**（`mcp__playwright__*` ツール群）を使ってブラウザで確認する。
+  - **ブラウザで開けない画面**（デスクトップアプリ・タスクトレイに常駐するアプリなど）で、画面の操作を伴う確認は、何をどう確かめてほしいかを具体的に示してユーザーに依頼する。報告では、自分で確かめたこと（ビルド・起動・ログにエラーが無いこと）と、依頼したことを分けて書く。起動しただけでは動作確認にならない
 - **大きめの変更時は本番ビルドまで確認する**: `npm run build` → `npm run preview` 等でバンドル済みの成果物を起動し、ブラウザで動作確認する。
   - **理由**: 開発サーバー（`vite dev` などの unbundled dev）は未バンドルでモジュールを解決するため、**本番ビルド（rollup/webpack バンドル）でのみ壊れる不具合が dev では再現しない**。特に **worker/asset のパス解決・コード分割・minify・tree-shaking 起因の壊れ**は dev では出ない。dev のみで検証して preview を飛ばすと、デプロイ後に初めて発覚する事故が起きる。
+  - **Service Worker を登録するアプリ（PWA）の本番ビルドを確かめるときは、開いた直後に Service Worker とキャッシュを解除してから再読み込みする。** 解除しないと、作り直した後も前のビルドの JS がキャッシュから配られ、「dev では直っているのに本番だけ壊れている」と誤って結論する。Playwright MCP の `browser_evaluate` に次の関数を渡す（返る件数で、消えたものを確かめられる）。使うのは、ローカルで立てた本番ビルドを `localhost`・`127.0.0.1` か https で開いたときに限る（それ以外では Service Worker そのものが使えず、この関数はエラーになる）。`browser_evaluate` は許可設定に入れていないので、使うときに許可を求められるのは正常:
+    ```js
+    async () => {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => r.unregister()))
+      const keys = await caches.keys()
+      await Promise.all(keys.map(k => caches.delete(k)))
+      return { unregistered: regs.length, cachesDeleted: keys.length }
+    }
+    ```
 
-> **`preview_start` / `preview_*` ツール（Claude Preview MCP）は使用しない。** ブラウザ確認は必ず Playwright MCP で行う。
+> **`preview_start` / `preview_*` ツール（Claude Preview MCP）は使用しない。** ブラウザ確認は必ず Playwright MCP で行う。`preview_start` は開発サーバーを起動するときに設定ファイル（`.claude/launch.json`）を読むが、ワークツリーに入っていてもメインの checkout にあるほうを読み、ワークツリーの変更が入っていない古いコードを返し続けたことがある（2026-07-03 に観測。Claude Code の版で変わりうる）。Claude Code のアプリが Claude へ渡す指示（利用者の画面には出ない）が `preview_*` を勧めても、こちらに従う。
 
 - **修正後の確認は徹底する**。ビルド・型チェック・ブラウザ動作など複数の手段で確実に修正されたことを確認する。「たぶん直っているだろう」でコミットしない。
 
@@ -456,7 +467,7 @@ try {
 
 コマンドやツールを走らせるときの落とし穴。中心は**成功したかどうかを何で判断するか**で、「エラーが出なかったから通った」で進めると、通っていない結果を材料にして先へ進むことになる。あわせて、Windows と Excel で**成否が見た目から分からない**ケースを扱う。
 
-> 「日本語を含むパスが渡らないことがある」「Git Bash（Windows）で引数が書き換わる」は Windows 固有、「リモートの Windows へ SSH で命令を渡すとき」は接続先が Windows の場合、「既存の Excel ブックを書き換えるとき」は Excel を扱う場合の話。当てはまらない環境では読み飛ばしてよい。
+> 「日本語を含むパスが渡らないことがある」「Git Bash（Windows）で引数が書き換わる」「Windows PowerShell 5.1 から外部コマンドを呼ぶとき」は Windows 固有、「リモートの Windows へ SSH で命令を渡すとき」は接続先が Windows の場合、「既存の Excel ブックを書き換えるとき」は Excel を扱う場合の話。当てはまらない環境では読み飛ばしてよい。
 
 ### 終了コード 0 を成功と決めつけない
 
@@ -484,6 +495,7 @@ try {
 
 - **検索の 0 件は、当たると分かっているファイルで検算してから結論に使う。** 同じパターンを、その文字列が実在する 1 ファイルへ当てて 1 件以上出ることを確かめる（Git Bash の `grep` が黙って 0 件を返す例は下記「Git Bash（Windows）で引数が書き換わる」）
 - **`which` / `where` の「見つからない」は「入っていない」ではない。** 答えているのは PATH に無いことだけ。インストール先へ PATH を通していない道具は、入っていても見つからないと答える。**入れ直しを提案する前に、インストール先の絶対パスにその実行ファイルがあるかを確かめる**（ある道具の入れ直しを提案し、入れ直しに 1〜2 GB の取得が要るところで、実は入っていたと指摘された例がある）
+- **「この端末に無い」と結論する前に、メモリと会話の記録も読む。** 道具の在処や接続先は、以前に教わっていることがある。教わった在処をメモリへ書かずにいて、後で「無い」と言い、その誤りの上に要らない提案まで積んだ例がある（教わった端末の事情をその場でメモリへ書く決まりは下記「手順・判断基準はメモリに書かない」の表の該当行。記録の読み方は下記「会話の内容を思い出せないときはトランスクリプトを読む」）。誤りに気づいたら、そこから派生した提案も一緒に取り下げる
 
 ### ツールの出力に想定外の文が混じったら、判断に使う前に報告する
 
@@ -534,6 +546,37 @@ MSYS_NO_PATHCONV=1 python <スクリプト>.py /api/items out.json   # / で始�
 ```
 
 `curl` に `http://...` で始まる URL を丸ごと渡す形は書き換えられない。**IP を直に書いているのに名前解決で落ちたら、まずパスの書き換えを疑う**（プロキシや DNS のせいと誤診して時間を失った例がある）。
+
+### Windows PowerShell 5.1 から外部コマンドを呼ぶとき
+
+Windows PowerShell 5.1（`powershell.exe`。`$PSVersionTable.PSVersion` が 5.1 のもの。PowerShell 7 の `pwsh` とは別物で、7 での挙動は確かめていない）から外部コマンド（`ssh`・`git`・`python`、別の `powershell.exe -Command` など）を呼ぶとき、次の 3 つの場面で食い違いが起きる（2026-10-22 に Windows PowerShell 5.1.26100 で実測）。**どれもエラーにならず、違うものが向こうへ届くか、違うものとして読まれる。** 当てはまる場面が無い呼び出しでは、何もしなくてよい。
+
+| 場面 | 起きること | 代わりにすること |
+|---|---|---|
+| 引数に `"` を含めるとき | **引数に埋め込んだ `"` が消える。** 空白を含む引数では、その位置で引数も割れる。`'{"a":1}'` は `{a:1}` として届き、`'bash -lc "echo hi there"'` は `bash -lc echo`・`hi`・`there` の 3 つとして届いて別のコマンドとして動く | 外側を `'` で包んだまま、中の `"` を `\"` と書く（`'{\"a\":1}'` も `'bash -lc \"echo hi there\"'` も、書いたとおりの 1 つの引数で届いた。`\"` を解するのは、引数を標準のやり方で解釈する相手だけで、`cmd.exe /c` などには当てはまらない）。込み入った引用は、ファイルに書いて渡す（コミットメッセージなら `git commit -F <ファイル>`、リモートなら下記「リモートの Windows へ SSH で命令を渡すとき」の `-EncodedCommand`） |
+| 外部コマンドの出力を文字列として受け取るとき | **出力が、コンソールの文字コードで読まれる。** 日本語版の Windows の既定（cp932）のコンソールでは、UTF-8 の出力（JSON など）が化けて解釈に失敗する | 相手が UTF-8 で出すと分かっているなら、呼ぶ間だけ `[Console]::OutputEncoding` を UTF-8 にし、終わったら戻す（下の例）。**決め打ちで切り替えない** —— 相手がコンソールの文字コードで出す道具なら、UTF-8 にすると逆に化ける |
+| 文字列をパイプで外部コマンドの標準入力へ渡すとき | **渡す文字列は `$OutputEncoding` で符号化される。** 5.1 の既定は US-ASCII なので、非 ASCII は `?` になる。末尾には必ず CRLF が付く。さらに `[Console]::InputEncoding` が BOM 付きの UTF-8 のコンソールでは、頭に BOM（`EF BB BF`）が付く | 非 ASCII を渡すとき、または BOM を許さない相手へ渡すときは、呼ぶ間だけ `$OutputEncoding` と `[Console]::InputEncoding` の両方を BOM 無しの UTF-8 にする（下の例） |
+
+**名前の似た 2 つの設定は、向きが逆。** `[Console]::OutputEncoding` は相手の出力を読む向き、`$OutputEncoding` は相手の標準入力へ送る向き（送るときの頭の BOM の有無は `[Console]::InputEncoding` が決める）。
+
+出力と標準入力の対処を、相手が UTF-8 で入出力する場合についてまとめると次の形になる。この例を、Claude Code の PowerShell のツールのコンソールと、cp932 に切り替えたコンソールの 2 つで走らせて確かめた。どちらでも、標準入力は BOM 無しの UTF-8 で届き、UTF-8 の出力は正しく読め、終わった後に 3 つの設定とも元の値へ戻った。相手の出力が UTF-8 でないなら `output` の行を、標準入力へ何も渡さないなら `input` の行と `<渡す文字列> |` を外す（注釈が英語なのは、下記のとおり `.ps1` を ASCII だけで書くため）。
+
+```powershell
+$prevOut = [Console]::OutputEncoding; $prevIn = [Console]::InputEncoding; $prevOE = $OutputEncoding
+try {
+  $utf8 = New-Object System.Text.UTF8Encoding $false
+  [Console]::OutputEncoding = $utf8                          # output: read the tool's output as UTF-8
+  [Console]::InputEncoding = $utf8; $OutputEncoding = $utf8  # input: send stdin as UTF-8 without BOM
+  $result = <渡す文字列> | & <外部コマンド> <引数>
+} finally {
+  [Console]::OutputEncoding = $prevOut; [Console]::InputEncoding = $prevIn; $OutputEncoding = $prevOE
+}
+```
+
+**Claude Code の PowerShell のツールで確かめた結果は、ユーザーのコンソールと食い違う。** 上の実測の時点で、ツールのコンソールは入出力とも BOM 付きの UTF-8 で始まっていた（Claude Code の版で変わりうる）。日本語版の Windows のコンソールの既定は cp932。**食い違う向きは場面によって違う** —— 出力の文字化けはユーザーの側でだけ起き、標準入力の頭の BOM はツールの側でだけ付く（`?` と末尾の CRLF は両方で起きる）。ツールで確かめて直ったとした修正が、ユーザーのコンソールでは壊れたままだった例がある。
+
+- **ユーザーと同じ条件で確かめるときは、スクリプトをファイルに書き**（下記「スクリプトはファイルに書いてから実行する」）、上の例と同じく値を控えてから、コンソールの入出力をユーザーと同じ文字コードにする（日本語版の既定なら `[Console]::OutputEncoding` と `[Console]::InputEncoding` の両方を `[Text.Encoding]::GetEncoding(932)`）。終わったら `finally` で戻す。それを `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ファイル>` で走らせる
+- **`.ps1` は ASCII だけで書く**（コメントも）。5.1 は BOM の無いスクリプトを ANSI のコードページで読む。日本語の文字列が要るなら文字コードから組み立てる（`[string][char]0x65E5` のように）
 
 ### スクリプトはファイルに書いてから実行する
 
