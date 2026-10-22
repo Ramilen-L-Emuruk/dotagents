@@ -1,0 +1,144 @@
+#!/bin/sh
+# 許可していないメールアドレスを含むコミットの push を止める。
+#
+# 判定は許可リスト方式。禁止したいアドレスを事前に知っている必要が無いので、
+# 新しい勤務先・新しい端末で設定を間違えても止まる。禁止リスト方式は必ず漏れる。
+#
+# 設定（リポジトリごと、または --global で）:
+#   git config --add hooks.allowedAuthorEmail '*+<GitHub のユーザー名>@users.noreply.github.com'
+#   git config --add hooks.allowedAuthorEmail 'noreply@anthropic.com'
+# パターンはシェルのグロブ（正規表現ではない）。大文字小文字は区別する。
+# 2 行目は Claude が author になるコミットのため（Co-Authored-By は本文なので対象外）。
+#
+# 見るのはコミットの author と committer だけ。注釈付きタグの作成者（tagger）と、
+# コミットメッセージ本文（Co-Authored-By 等）は対象外。
+#
+# 調べられなかったときは通さずに止める。「何も照合しないまま通った」を作らないため
+# （このフック自身は 2 を返すが、git push が利用者へ返すのは 1。git がそう丸める）。
+
+set -u
+# 許可リストのグロブが、作業ディレクトリのファイル名へ展開されるのを防ぐ。
+# case のパターン照合には影響しない。
+set -f
+
+# 再帰の印。グローバル（core.hooksPath）とリポジトリの両方に同じファイルが置かれると、
+# 下の「リポジトリ固有のフックへ渡す」で自分自身を呼ぶ。検査はもう済んでいるので降りる。
+# パスの比較では止められない —— Windows では git が返す形（C:/...）とシェルが返す形
+# （/c/...）が食い違い、一致しないまま無限に呼び合う。
+# export しないのは、チェーン先から起きる別の push まで素通りさせないため。
+if [ -n "${GIT_EMAIL_GUARD_ACTIVE:-}" ]; then
+  exit 0
+fi
+
+# pre-push の引数は <remote 名> <remote URL>。後でリポジトリ固有のフックへ渡すので先に控える。
+remote_name="${1:-}"
+remote_url="${2:-}"
+
+# すべて 0 の OID か。桁数は SHA-1 で 40、SHA-256 で 64 なので、長さでは見ない。
+is_zero_oid() {
+  case "${1:-}" in
+    '') return 1 ;;
+    *[!0]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+allowed=$(git config --get-all hooks.allowedAuthorEmail 2>/dev/null || true)
+if [ -z "$allowed" ]; then
+  echo "[メールの検査] hooks.allowedAuthorEmail が 1 つも設定されていない。push を止める。" >&2
+  echo "" >&2
+  echo "  設定例:" >&2
+  echo "    git config --add hooks.allowedAuthorEmail '*+<あなたの ID>@users.noreply.github.com'" >&2
+  echo "    git config --add hooks.allowedAuthorEmail 'noreply@anthropic.com'" >&2
+  exit 2
+fi
+
+input=$(cat)
+
+bad=""
+while read -r lref lsha rref rsha; do
+  [ -z "${lsha:-}" ] && continue
+  is_zero_oid "$lsha" && continue   # ref の削除。送るコミットが無い
+
+  # 検査する範囲を組み立てる。
+  # - push 先のリモートに既にあるコミットは見なくてよい。ここを --remotes（全リモート）に
+  #   すると、別のリモートに既にあるものまで外れる —— 非公開のリモートから公開のリモートへ
+  #   送る経路が素通りする。push 先だけに絞ること。remote が URL 直指定なら
+  #   --remotes=<URL> は何にも一致せず、全履歴が対象になる（安全側）。
+  # - リモート側の旧 sha から到達できるものも見なくてよい。ただし他の端末や CI が先に
+  #   push していると手元に無いので、存在を確かめてから足す（無いまま渡すと git log が
+  #   失敗し、下の歯止めで止まる）。
+  set -- "$lsha" --not
+  [ -n "$remote_name" ] && set -- "$@" "--remotes=$remote_name"
+  if [ -n "${rsha:-}" ] && ! is_zero_oid "$rsha" && git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+    set -- "$@" "$rsha"
+  fi
+
+  # git log の失敗を握り潰さない。パイプで sort へ繋ぐと終了コードが sort のものになり、
+  # 失敗が「アドレスが 1 件も無かった」と見分けられなくなる（＝検査せずに通る）。
+  if ! raw=$(git log --no-show-signature --format='%ae%n%ce' "$@" 2>&1); then
+    echo "[メールの検査] コミットを調べられなかった。push を止める。" >&2
+    echo "  範囲: $*" >&2
+    printf '%s\n' "$raw" | sed 's/^/  /' >&2
+    exit 2
+  fi
+  # 送るコミットが無ければ検査するものも無い。ここで下の sed へ渡すと、空の入力から
+  # 空行が 1 つできて「空のアドレス」に化け、正当な push が止まる。
+  if [ -z "$raw" ]; then
+    continue
+  fi
+  # 空のアドレス（<>）は単語分割で消えてしまうので、印に替えてから数える
+  found=$(printf '%s\n' "$raw" | sed 's/^$/(空のアドレス)/' | sort -u)
+
+  for mail in $found; do
+    hit=0
+    for pat in $allowed; do
+      case "$mail" in
+        $pat) hit=1; break ;;
+      esac
+    done
+    if [ "$hit" = 0 ]; then
+      bad="$bad$mail
+"
+    fi
+  done
+done <<EOF
+$input
+EOF
+
+if [ -n "$bad" ]; then
+  echo "[メールの検査] push 拒否: 許可していないメールアドレスを含むコミットがあります。" >&2
+  echo "" >&2
+  printf '%s' "$bad" | sort -u | sed '/^$/d' | sed 's/^/    /' >&2
+  echo "" >&2
+  echo "  許可されているもの: git config --get-all hooks.allowedAuthorEmail" >&2
+  echo "  直し方: git rebase -i などで author / committer を書き換えてから push する" >&2
+  exit 1
+fi
+
+# リポジトリ固有のフックへ渡す（このフックをグローバルに置いた場合に効く）。
+# core.hooksPath を設定すると .git/hooks は読まれなくなるので、自分で呼ぶ。
+# 引き継ぐのは pre-push だけ。pre-commit などは呼ばれないままになる。
+if [ -n "$(git config --get core.hooksPath 2>/dev/null || true)" ]; then
+  # `git rev-parse --git-path hooks/...` は core.hooksPath を解決してしまい、
+  # このフック自身のパスを返す（＝自分を無限に呼び出す）。.git から直接組み立てる。
+  # --path-format は git 2.31 以降。取れなければ黙って飛ばさず、その旨を出す。
+  git_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [ -z "$git_dir" ]; then
+    echo "[メールの検査] .git の場所を特定できず、リポジトリ固有の pre-push を呼べなかった" >&2
+    echo "  （メールの検査は済んでいる。git が古い可能性がある）" >&2
+    exit 0
+  fi
+  repo_hook="$git_dir/hooks/pre-push"
+  if [ -x "$repo_hook" ]; then
+    # 印はここでだけ環境へ乗せる。呼び先が自分自身でも、冒頭の判定で降りる。
+    if [ -n "$input" ]; then
+      printf '%s\n' "$input" | GIT_EMAIL_GUARD_ACTIVE=1 "$repo_hook" "$remote_name" "$remote_url"
+    else
+      GIT_EMAIL_GUARD_ACTIVE=1 "$repo_hook" "$remote_name" "$remote_url" < /dev/null
+    fi
+    exit $?
+  fi
+fi
+
+exit 0
