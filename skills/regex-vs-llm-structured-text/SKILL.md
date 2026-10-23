@@ -127,7 +127,26 @@ def identify_low_confidence(
 
 ### 3. LLM バリデーター（エッジケースのみ）
 
+構造化出力（Structured Outputs。`output_config.format`）で応答の形を JSON Schema に固定する。散文で「JSON で返せ」と頼むより形が崩れにくい。ただし、途中で切れたとき（`stop_reason` が `max_tokens`）と拒否されたとき（`refusal`）はスキーマどおりにならない。この例は `stop_sequences` を渡さないので、正常な応答は `end_turn` で終わる。それ以外の応答や読めない応答では LLM の結果を採用せず、元の項目を返す。
+
 ```python
+import json
+import logging
+from dataclasses import replace
+
+logger = logging.getLogger(__name__)
+
+PARSED_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string"},
+        "choices": {"type": "array", "items": {"type": "string"}},
+        "answer": {"type": "string"},
+    },
+    "required": ["text", "choices", "answer"],
+    "additionalProperties": False,
+}
+
 def validate_with_llm(
     item: ParsedItem,
     original_text: str,
@@ -135,20 +154,35 @@ def validate_with_llm(
 ) -> ParsedItem:
     """Use LLM to fix low-confidence extractions."""
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",  # Cheapest model for validation
-        max_tokens=500,
+        model="claude-haiku-5-5",  # Cheapest model for validation
+        max_tokens=1024,
+        output_config={"format": {"type": "json_schema", "schema": PARSED_ITEM_SCHEMA}},
         messages=[{
             "role": "user",
             "content": (
                 f"Extract the question, choices, and answer from this text.\n\n"
                 f"Text: {original_text}\n\n"
                 f"Current extraction: {item}\n\n"
-                f"Return corrected JSON if needed, or 'CORRECT' if accurate."
+                f"Return the corrected extraction (unchanged if it is already accurate)."
             ),
         }],
     )
-    # Parse LLM response and return corrected item...
-    return corrected_item
+    if response.stop_reason != "end_turn":
+        # 切れた・拒否された応答はスキーマどおりでない
+        logger.warning("LLM validation skipped for %s: stop_reason=%s", item.id, response.stop_reason)
+        return item
+    try:
+        fixed = json.loads(response.content[0].text)
+    except (IndexError, AttributeError, json.JSONDecodeError):
+        logger.warning("LLM validation skipped for %s: unreadable response", item.id)
+        return item
+    # 元の信頼度のまま。LLM の修正で信頼度が上がったとは扱わない（再検証が要るなら呼び出し側で再スコアする）
+    return replace(
+        item,
+        text=fixed["text"],
+        choices=tuple(fixed["choices"]),
+        answer=fixed["answer"],
+    )
 ```
 
 ### 4. ハイブリッドパイプライン
