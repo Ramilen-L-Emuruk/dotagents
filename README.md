@@ -269,6 +269,7 @@ Codex用のスキルは、`templates/codex/.agents/skills/` にある検証済�
    git config --global --add hooks.allowedAuthorEmail 'noreply@anthropic.com'
    ```
    1 行目は `数字+ユーザー名@users.noreply.github.com` の形に当たる。`+` の無い古い形のアドレスを使っているなら、それも足す。2 行目は **Claude が author になるコミット**のため（`Co-Authored-By` は本文なので対象外だが、author 欄がこのアドレスになることがある）。
+   **パターンに `[...]` を直接書かない。** シェルのグロブでは文字クラスとして読まれる。`41898282+github-actions[bot]@users.noreply.github.com` を許すなら `*github-actions*@users.noreply.github.com`（`github-actions` を含む別のアカウントも通る。厳密にするなら `[` を逃がす）。
 2. 置いて実行権を付ける:
    ```bash
    mkdir -p ~/.git-hooks && cp scripts/git-hooks/pre-push ~/.git-hooks/ && chmod +x ~/.git-hooks/pre-push
@@ -277,16 +278,31 @@ Codex用のスキルは、`templates/codex/.agents/skills/` にある検証済�
    ```bash
    git config --global core.hooksPath "$HOME/.git-hooks"
    ```
+   **`core.hooksPath` を設定すると、各リポジトリの `.git/hooks/` は読まれなくなる。** 置き換わるだけで連鎖しないので、リポジトリ固有の検査が黙って死ぬ（このフックは `pre-push` に限り、自分で呼び直す）。逆に、リポジトリ側が `core.hooksPath` を持っている（husky 等）と、グローバルのフックのほうが動かない。
 
-**勤務先のリポジトリへは、そのリポジトリでだけ許す。** グローバルへ足すと全リポジトリで通り、公開側の歯止めが外れる。
+#### 勤務先など、公開しないリポジトリ
+
+手順 3 で全リポジトリに効くので、勤務先のリポジトリへ push すると勤務先のアドレスが引っかかる。**そのリポジトリでだけ許す。**
 
 ```bash
 git config --local --add hooks.allowedAuthorEmail '<勤務先のアドレス>'
 ```
 
-端末ごとに入れる必要がある（フックは git の管理外）。配布元のフックを直したら、入れた端末それぞれで手順 2 をやり直す。
+**グローバルへ足して済ませないこと。** 全リポジトリで通るようになり、公開側の歯止めが外れる。
 
-**効かない場合と、見ていない範囲がある。** 他のフック（`pre-commit` 等）は読まれなくなること、リポジトリ側が `core.hooksPath` を持つ（husky 等）とこのフックが動かないこと、見るのは author と committer だけであることは [`rules/common/security.md`](rules/common/security.md)「公開する前に個人情報が無いことを確かめる」にまとめてある。
+**公開リモートも持つリポジトリでは使わない。** この設定はリポジトリ単位なので、そのリポジトリが持つ**すべての** remote に効く。社内と公開のミラーを両方持つなら、`git config --local user.email` を noreply 形式にして、勤務先のアドレスで commit しないようにする。
+
+**push 先によって検査を切り替える仕組みは、意図して持っていない**（2026-10-23 ユーザー承認）。切り替えるには push 先 URL からホストを判定することになるが、URL の形（スキームの有無・scp 形式・`#` や `?` の扱い）は解釈が割れ、取り違えると公開側が素通りする。上の `--local` なら、**書き忘れても push が止まるだけ**で済む（止まった先で 1 行足せばよい）。その代わり公開リモートも持つリポジトリでは使えず、そこは直前のとおり `user.email` のほうを分ける。
+
+#### このフックで止まらないもの
+
+- **フックを入れていない端末からの push。** フックは git の管理外なので、clone しても付いてこない。端末ごとに手順 1〜3 が要る。配布元のフックを直したら、入れた端末それぞれで手順 2 をやり直す
+- **リポジトリ側が `core.hooksPath` を持っている場合**（husky 等）。そちらが優先されるので、**その置き場へこのフックも置かない限り動かない**
+- **`--no-verify` を付けた push。** git の仕様で、フックからは防げない
+- **GitHub の Web 画面での編集、CI が自分で行う push。** 手元を通らない
+- **注釈付きタグの作成者・タグのメッセージ・コミットメッセージ本文（`Co-Authored-By` 等）・ブランチ名とタグ名。** 見ているのはコミットの author と committer だけ
+
+上の 2 つは設置で塞げる。残りは機械では止まらないので、目で確かめる。何を機械で止め、何を目で見るかの原則は [`rules/common/security.md`](rules/common/security.md)「公開する前に個人情報が無いことを確かめる」にある。
 
 ## 注意事項
 
