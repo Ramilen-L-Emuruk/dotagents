@@ -22,8 +22,8 @@ origin: ECC
 単純なタスクには安価なモデルを自動選択し、複雑なタスクには高価なモデルを予約。
 
 ```python
-MODEL_SONNET = "claude-sonnet-4-6"
-MODEL_HAIKU = "claude-haiku-4-5-20251001"
+MODEL_SONNET = "claude-sonnet-5-5"
+MODEL_HAIKU = "claude-haiku-5-5"
 
 _SONNET_TEXT_THRESHOLD = 10_000  # 文字数
 _SONNET_ITEM_THRESHOLD = 30     # アイテム数
@@ -38,7 +38,7 @@ def select_model(
         return force_model
     if text_length >= _SONNET_TEXT_THRESHOLD or item_count >= _SONNET_ITEM_THRESHOLD:
         return MODEL_SONNET  # 複雑なタスク
-    return MODEL_HAIKU  # 単純なタスク（3〜4倍安い）
+    return MODEL_HAIKU  # 単純なタスク
 ```
 
 ### 2. イミュータブルなコスト追跡
@@ -141,6 +141,7 @@ def process(text: str, config: Config, tracker: CostTracker) -> tuple[Result, Co
     # 3. リトライ + キャッシング付き呼び出し
     response = call_with_retry(lambda: client.messages.create(
         model=model,
+        max_tokens=16000,  # 出力の上限（必須の引数。用途に合わせて決める）
         messages=build_cached_messages(system_prompt, text),
     ))
 
@@ -151,20 +152,22 @@ def process(text: str, config: Config, tracker: CostTracker) -> tuple[Result, Co
     return parse_result(response), tracker
 ```
 
-## 価格リファレンス（2025-2026）
+## 価格リファレンス
+
+下の金額と相対コストは 2026-10 時点の目安（相対コストは Haiku の単価との比）。価格は改定されるので、使う前に公式の料金表で確かめる。
 
 | モデル | 入力 ($/1M トークン) | 出力 ($/1M トークン) | 相対コスト |
 |--------|---------------------|----------------------|-----------|
-| Haiku 4.5 | $0.80 | $4.00 | 1x |
-| Sonnet 4.6 | $3.00 | $15.00 | 〜4x |
-| Opus 4.5 | $15.00 | $75.00 | 〜19x |
+| Haiku 5.5 | $0.10 | $0.50 | 1x |
+| Sonnet 5.5 | $2.00 | $10.00 | 〜20x |
+| Opus 5.5 | $4.00 | $20.00 | 〜40x |
 
 ## ベストプラクティス
 
 - **最安モデルから開始** — 複雑さの閾値を満たした場合のみ高価なモデルにルーティング
 - **明示的なバジェット制限を設定** — バッチ処理前に設定。過剰支出より早期失敗を選ぶ
 - **モデル選択の判断をログ** — 実データに基づいて閾値をチューニングできる
-- **1024 トークン超のシステムプロンプトにはプロンプトキャッシングを使用** — コストとレイテンシの両方を削減
+- **長いシステムプロンプトはキャッシュし、効いているか確かめる** — コストとレイテンシの両方を削減。キャッシュできる最小の長さはモデルごとに決まっていて、足りないと何も言わずにキャッシュされない。同じプロンプトで 2 回目以降も `usage.cache_read_input_tokens` が 0 のままなら効いていない
 - **認証やバリデーションエラーでは絶対にリトライしない** — 一時的な障害（ネットワーク、レート制限、サーバーエラー）のみ
 
 ## 避けるべきアンチパターン
