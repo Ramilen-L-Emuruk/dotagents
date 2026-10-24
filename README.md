@@ -120,6 +120,13 @@ dotagents/
 3. **他ファイルへの相対リンクを置き換える。** `CLAUDE.md` は**単体でプロジェクトへ取り込まれる**ため、`rules/` 配下を指す相対リンクは配布先で解決しない。`CLAUDE.md` 側に同等の節があれば「下記「…」」へ、無ければバッククォートのフルパス（`` `rules/common/code-review.md` ``）へ書き換える
 4. **この README を指す記述は落とす。** 配布先には届かないため
 
+**`rules/common/development-workflow.md` の次の 2 か所は例外で、変換では揃わない。**
+
+- **手順 11・12**: `rules` 側は詳細を `worktree.md` へ任せた短い形、`CLAUDE.md` 側は `worktree.md` の節を手順の中に畳んだ全文の形（`CLAUDE.md` 単体の配布先には `worktree.md` が届かないため）。中身を変えるときは、`rules` 側では `worktree.md` を、`CLAUDE.md` 側では手順の本文を直す
+- **手順 6（ドキュメント更新）**: `rules` 側は手順の中に条件の全文を持ち、`CLAUDE.md` 側は手順から「ドキュメント更新」の節へ任せている。中身を変えるときは、`rules` 側では手順 6 を、`CLAUDE.md` 側では「ドキュメント更新」の節を直す
+
+手順 3 のコードレビュー・品質向上のエージェントの箇条は `rules` 側にだけある（`CLAUDE.md` 単体の配布先はエージェントの定義を持たないことがあるため）。
+
 **複製の単位は節で、ファイルではない。** `CLAUDE.md` は `rules/common/` を写したものではなく、**単体で取り込む配布先にも効かせたい節だけ**を持つ（対応する節を 1 つも持たないファイルもあれば、`performance.md`・`worktree.md` のように一部の節だけを複製しているファイルもある）。**新しい節は `rules/common/` 側へ先に書き、単体配布でも効かせたいものだけを `CLAUDE.md` へ複製する。** 複製しない節は、`rules/common/` を取り込む配布先にだけ届く。
 
 ### `rules/common/` と言語別ルールの関係
@@ -152,7 +159,7 @@ paths:
 
 - **`release`**: 自作。**単体では機能しない**（完了ブランチを `ready/*` へ改名する規約が前提のため）。導入経路によって必要な組み合わせが変わる:
   - `CLAUDE.md` テンプレートを使う場合 — `CLAUDE.md`（「リリース」節に規約を内包）＋ このスキル
-  - `rules/common/` をモジュールとして使う場合 — `worktree.md`（`ready/` 規約）＋ `development-workflow.md`（手順9〜10）＋ `git-workflow.md`（マージ・版上げの委譲先）＋ `security.md`（push 前の個人情報の確認）＋ このスキル
+  - `rules/common/` をモジュールとして使う場合 — `worktree.md`（`ready/` 規約）＋ `development-workflow.md`（手順 10〜12 と「リリース」）＋ `git-workflow.md`（マージ・版上げの委譲先）＋ `security.md`（push 前の個人情報の確認）＋ このスキル
   - 両方使う場合は上記すべて
 
   コピー後に置き換えるべきもの（既定ブランチ名・各種コマンド・検証手段）は SKILL.md 冒頭の「コピー時に置き換えるもの」に列挙してある
